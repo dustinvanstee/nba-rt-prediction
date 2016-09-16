@@ -1,0 +1,272 @@
+---
+title: "Logistic Regression"
+author: "Catherine C."
+date: "September 14, 2016"
+output: html_document
+---
+
+<style>
+pre {
+  overflow-x: auto;
+}
+pre code {
+  word-wrap: normal;
+  white-space: pre;
+}
+</style>
+
+```{r global_options, echo = FALSE, include = FALSE}
+options(width = 999)
+knitr::opts_chunk$set(message = FALSE,
+                      cache = FALSE, tidy = FALSE, size = "small")
+```
+
+# Import
+```{r message = FALSE}
+#install.packages("dplyr")
+library(dplyr)
+
+#install.packages("reshape2")
+library("reshape2")
+
+#install.packages("ggplot2")
+library("ggplot2")
+
+```
+
+***
+
+# Read In CSV File For Logistic Regression
+```{r}
+logisticDF <- read.csv(paste0(getwd(), "/nba-datawrangle-lrDF.csv"))
+
+logisticDF$cf3 <- logisticDF$pct_left * logisticDF$teambspread / 100
+logisticDF$cf4 <- logisticDF$scoreb_scorea ^ 3
+
+```
+
+***
+
+# Inspect the Data
+```{r}
+# Here make sure the data is read in properly
+# head(filter(logisticDF, timeleft < 10), n = 50)
+summary(logisticDF)
+```
+
+***
+
+# Function to Create the Model and Train it and Test it
+```{r}
+# Rather than use an ML Pipleline, I created this function so that I could extract/print some intermediate results and debug the model. 
+
+trainAndTest <- function(data, features){
+  cat("*************************************************", collapse = "\n")
+  
+  # Split the data into training and test sets
+  set.seed(1)
+  train <- sample_frac(data, 0.7)
+  test <- data[-as.numeric(rownames(train)),]
+  cat("Training Samples = ", nrow(train) , collapse = "\n")
+  cat("Test Samples = ", nrow(test), collapse = "\n")
+
+# standardize the data
+  train_features <- as.data.frame(scale(train[names(train) %in% features]))
+  test_features <- as.data.frame(scale(test[names(test) %in% features]))
+
+# add pct_complete since we will need it when compute f1 score for 4 quarters.
+    pct_complete <- train$pct_complete
+    train_features <- cbind(train_features, pct_complete)
+    pct_complete <- test$pct_complete
+    test_features <- cbind(test_features, pct_complete)
+
+# fit the model
+  model <- glm(train$home_win ~ . - pct_complete , data = train_features, family = "binomial")
+  cat("lrModel.intercept = ", model$coefficients[1], collapse = "\n")
+  cat("lrModel.weights = ", model$coefficients[-1], collapse = "\n")
+
+# Generate Predictions
+ train_prob <- predict(model, newdata = train_features, type = "response")
+ train_fitted <- ifelse(train_prob > .5, 1, 0)
+ correct <- ifelse(train_fitted == train$home_win, 1, 0)
+ pct_comp_ceil <- ceiling(train$pct_complete)
+ trn_predictions <- data.frame(correct, pct_comp_ceil, train_prob)
+ 
+ test_prob <- predict(model, newdata = test_features, type = "response")
+ test_fitted <- ifelse(test_prob > .5, 1, 0)
+ correct2 <- ifelse(test_fitted == test$home_win, 1, 0)
+ pct_comp_ceil2 <- ceiling(test$pct_complete)
+ predictions2 <- data.frame(correct2, pct_comp_ceil2, test_prob)
+
+ 
+# Evaluate predictions and Print results
+ evaluator <- function(act, pred, data){
+    cm <- as.matrix(table(act, pred))
+    diag = diag(cm)
+    rowsums = apply(cm, 1, sum)
+    colsums = apply(cm, 2, sum)
+    precision = diag / colsums 
+    recall = diag / rowsums
+    f1 = 2 * precision[2] * recall[2] / (precision[2] + recall[2]) 
+    return(f1)
+ }
+ 
+ 
+ trn_tot_f1 <- evaluator(train$home_win, train_fitted)
+ tst_tot_f1 <- evaluator(test$home_win, test_fitted)
+ 
+ Quater_f1 <- function(start, end){
+  Q <- subset(test_features, test_features$pct_complete >= start & test_features$pct_complete < end)
+  Q_prob <- predict(model, newdata = Q, type = "response")
+  Q_fitted <- ifelse(Q_prob > .5, 1, 0)
+  Q_actual <- subset(test$home_win, test$pct_complete >= start & test$pct_complete < end)
+  f1 <- evaluator(Q_actual, Q_fitted)
+  return(f1)
+}
+ 
+ f1q1 <- Quater_f1(0, 25)
+ f1q2 <- Quater_f1(25, 50)
+ f1q3 <- Quater_f1(50, 75)
+ f1q4 <- Quater_f1(75, 100)
+ 
+ cat("Total Train f1 = ", trn_tot_f1, collapse = "\n")
+ cat("Total Test f1 = ", tst_tot_f1, collapse = "\n")
+ 
+ cat("Q1 Test f1 = ", f1q1, collapse = "\n")
+ cat("Q2 Test f1 = ", f1q2, collapse = "\n")
+ cat("Q3 Test f1 = ", f1q3, collapse = "\n")
+ cat("Q4 Test f1 = ", f1q4, collapse = "\n")
+ 
+ qs <- c(f1q1, f1q2, f1q3, f1q4, tst_tot_f1)
+ 
+
+ invisible(list(qs, predictions2, test, model))
+ 
+}
+
+```
+
+***
+
+# Test and Train multiple models
+```{r warning = FALSE}
+# Evaluate 3 different Models
+
+f1m0 <- trainAndTest(logisticDF, c("scoreb_scorea"))
+
+f1m1 <- trainAndTest(logisticDF, c("scoreb_scorea", "teamaspread"))
+
+f1m2 <- trainAndTest(logisticDF, c("scoreb_scorea", "teamaspread", "cf1", "cf2", "cf3"))
+```
+
+***
+
+# Examine F1 scores from the models
+
+> F1 score is a metric used to evaluate different models it runs on a scale from 0 to 1 with the larger value meaning the model performs better. F1 score is a combination of precision/recall and helps in situations where outcomes are highly skewed in one direction.  eg 95% samples are wins, 5% are losses. In that example, I could make a model that blindly predicts win every time and I would be 95% correct... F1 adjusts for this fact and would penalize me for the false negatives.
+
+```{r}
+# Build a small dataframe to hold my F1 scores.
+
+model <- c("model0", "model1", "model2")
+errDF <- cbind(as.data.frame(rbind(f1m0[[1]], f1m1[[1]], f1m2[[1]])), model)
+colnames(errDF) <- c("Q1", "Q2", "Q3", "Q4", "total", "model")
+
+head(errDF)
+
+# plot
+# convert to long format
+errDF_long <- melt(errDF, id = "model")
+ggplot(data = errDF_long, 
+       aes(x = variable, y = value , group = model, colour = model)) +
+       geom_line() +
+       xlab("") +
+       ylab("F1 Score") +
+       ggtitle("F1 Score vs. Quarter")
+
+# going from model0 -> model1 yields a decent improvement, but after that the improvement is marginally better with the extra terms
+```
+
+***
+
+# Lets take a look at some of the Errors to see if there is any pattern
+```{r}
+predictions_2 <- as.data.frame(f1m0[2])
+test <- as.data.frame(f1m0[3])
+
+error_check <- data.frame(predictions_2, test[c("teama", "scorea", "teamb", "scoreb", "timeleft", "teamaspread",'fscorea', 'fscoreb', "home_win", "fscoreb_fscorea")])
+
+error_check_false1 <- filter(error_check, correct2 == 0 & fscoreb_fscorea < 4 & fscoreb_fscorea > -4)
+head(error_check_false1, n = 20)
+
+error_check_false2 <- filter(error_check, fscoreb_fscorea < 4 & fscoreb_fscorea > -4)
+head(error_check_false2, n = 20)
+
+# f1m3 <- trainAndTest(logisticDF, c("scoreb-scorea",  "teamaspread", "cf1", "cf2", "cf3","cf4" ))
+
+# Some errors due to 
+# early in game ....
+# close scores at the end
+# some games the spread strongly effects game at the end... mabye scale that somehow by time left ?
+# teams that had an early lead, even though not favored did end up winning.  maybe add a scorediff^2
+
+```
+
+***
+
+# Logistic Analysis And Explanation
+
+> Complex Model 2 Discussion
+When the logistic regression model is trained, the weights corresponding to each feature are optimized to minimize the error of the predictions.  Below are the weights from the final model that was trained with 5 features.
+
+```{r}
+print(f1m2[[4]]$coefficients[-1])
+```
+
+Interpretting weights can be tricky, especially if input features are functions of each other (ie, if one feature changes, it implies another feature changes)
+
+Lets look at just the away team spread, as this feature is not a function of any other feature.
+
+The away spread weight is 0.2198502.  If the spread increases by 1, then the probability of the away team winning is 
+
+<center> <h3> _e_^0.2198502^ = 1.24589 </h3></center>
+
+This means that there is a 25% relative increase in the probablity the home team will win for every one point change in away team spread.
+
+***
+
+# Function to predict new examples (Requires debug, potentially REMOVE)
+
+```{r}
+getPrediction_model2 <- function(teama, scorea, teamb, scoreb, timeleft, teamaspread, model){
+  
+  pct_left <- timeleft / 48 * 100
+  
+  coef <- model[[4]]$coefficients
+
+  logit <- sum(coef * c(1, 
+                        scoreb-scorea, 
+                        teamaspread, 
+                        (1/((pct_left / 25 + .01) ^ .5)) * (scoreb - scorea),   
+                        (1/((pct_left / 2.0 + .01) ^ 1.3)) * (scoreb - scorea), 
+                        timeleft / 48 * (-teamaspread)))
+                        
+  prob <- exp(logit)/(1+exp(logit))
+  winner <- ifelse(prob > .5, paste(teamb), paste(teama) )
+  
+  cat(teama, "(away) vs. ", teamb, "(home)", collaspe = "\n")
+  cat("Spread(Home Team): ", teamaspread, " ( + means home team is not favored)", collaspe = "\n")
+  cat("Time Left: ", timeleft, collaspe = "\n")
+  cat("Predicted Winner: ", winner, "Probability: ", prob, collaspe = "\n")
+  
+}
+```
+
+***
+
+# Simple Predictor based on a new Example ....
+```{r}
+getPrediction_model2("lac",88, "por", 96, 20.0, -8.0, f1m1)
+```
+
+ 
