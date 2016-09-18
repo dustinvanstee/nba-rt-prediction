@@ -5,7 +5,6 @@ date: "September 14, 2016"
 output: html_document
 ---
 
-# make change here
 <style>
 pre {
   overflow-x: auto;
@@ -448,7 +447,8 @@ away_spread_teama <- away_spread_teama[order(away_spread_teama$teamlonga), ]
 p <- plot_ly(
   x = away_spread_teama$teamlonga,
   y = away_spread_teama$teamaspread,
-  type = "bar")
+  type = "bar") %>%
+  layout(margin = list(l = 50, r = 50, b = 200, t = 20, pad = 4) )
 p
 ````
 
@@ -469,9 +469,9 @@ away_spread_teamb <- away_spread_teamb[order(away_spread_teamb$teamlongb), ]
 p <- plot_ly(
         x = away_spread_teamb$teamlongb,
         y = away_spread_teamb$teambspread,
-        type = "bar")
+        type = "bar") %>%
+        layout(margin = list(l = 50, r = 50, b = 200, t = 20, pad = 4) )
 
-    
 p
 
 ```
@@ -500,6 +500,7 @@ paste("total games collected:", nrow(gameDF)) #103
 ```
 
 *** 
+
 # Lets see if there are some correlations ... Spread vs Final Score Difference 
 ```{r, out.width = 'auto'}
 # Here we show that the better a team is (negative spread, the more they are likely to win ...)
@@ -571,7 +572,6 @@ lrDF_filtered <- filter(lrDF, dfa > -30)
 
 # Lets Look at some stats from logistic Regression dataframe
 ```{r}
-
 summary(lrDF_filtered)
 ```
 
