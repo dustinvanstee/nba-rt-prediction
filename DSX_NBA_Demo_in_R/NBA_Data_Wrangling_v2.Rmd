@@ -529,7 +529,7 @@ scatterD3(x = gameDF$fscoreb_fscorea, y = gameDF$teamaspread)
 ***
 
 # Vegas Score Prediction vs Actual Score Outcome
-```{r, ,out.width='50%', fig.width=3, fig.height=3 }
+```{r, out.width='50%', fig.width=3, fig.height=3 }
 # Here we can show another weak correlation of the vegas overunder/spread to the actual final outcome.
 # vegas_fscore was calculated by taking overunder/2 +- the spread/2 to get a projection of
 # the home/away teams score

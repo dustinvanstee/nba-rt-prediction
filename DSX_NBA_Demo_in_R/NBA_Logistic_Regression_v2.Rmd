@@ -1,7 +1,7 @@
 ---
 title: "Logistic Regression"
-author: "Catherine C."
-date: "September 14, 2016"
+author: "Catherine Cao and Dustin VanStee"
+date: "September 19, 2016"
 output: html_document
 ---
 
@@ -15,30 +15,45 @@ pre code {
 }
 </style>
 
+> Have you ever wanted predict outcomes of NBA games in real time as the games are occurring?  This webpage is part 2 or a 2 part series that will describe the methods you can use to build your own prediction model.  We will leverage IBM's Data Science Experience environment with Rstudio to build linear and logistic regression models using R and Spark.  
+
+![datascience.ibm.com](https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/dsx.png)
+
+> This webpage shows how to perform logistic regression on the prepared NBA data frame to build a model that will help make in game predictions about which team is most likely to win.  
+
+>This site holds the live hosted website running the models from the analysis
+http://169.55.24.28:6001/
+
+>All the source for this demo including the HOWTO is located on GitHub. 
+https://github.com/dustinvanstee/nba-rt-prediction
+
 ```{r global_options, echo = FALSE, include = FALSE}
 options(width = 999)
 knitr::opts_chunk$set(message = FALSE,
                       cache = FALSE, tidy = FALSE, size = "small")
 ```
 
-# Import
+# Imports
 ```{r message = FALSE}
+
+
 #install.packages("dplyr")
-library(dplyr)
-
 #install.packages("reshape2")
-library("reshape2")
-
 #install.packages("ggplot2")
-library("ggplot2")
+#install.packages("RCurl")
 
+library(dplyr)
+library("reshape2")
+library("ggplot2")
+library(RCurl)
 ```
 
 ***
 
 # Read In CSV File For Logistic Regression
+> Read data from part1.  Data preloaded into Github
 ```{r}
-logisticDF <- read.csv(paste0(getwd(), "/nba-datawrangle-lrDF.csv"))
+logisticDF <- read.csv("https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/DSX_NBA_Demo_in_R/nba-datawrangle-lrDF.csv",header=TRUE,sep=",")
 
 logisticDF$cf3 <- logisticDF$pct_left * logisticDF$teambspread / 100
 logisticDF$cf4 <- logisticDF$scoreb_scorea ^ 3
@@ -48,17 +63,18 @@ logisticDF$cf4 <- logisticDF$scoreb_scorea ^ 3
 ***
 
 # Inspect the Data
+> Print out a summary of the dataframe to make sure the data is loaded properly.
 ```{r}
-# Here make sure the data is read in properly
-# head(filter(logisticDF, timeleft < 10), n = 50)
+# There are approximately 13000 data points
 summary(logisticDF)
 ```
 
 ***
 
 # Function to Create the Model and Train it and Test it
+>Since there are multiple models to be trained, use this function to partition the data into training and test data sets.  This function will return a number of objects.  It returns the per quarter error rates, prediction dataframe, test data, and the model.
 ```{r}
-# Rather than use an ML Pipleline, I created this function so that I could extract/print some intermediate results and debug the model. 
+
 
 trainAndTest <- function(data, features){
   cat("*************************************************", collapse = "\n")
@@ -163,9 +179,9 @@ f1m2 <- trainAndTest(logisticDF, c("scoreb_scorea", "teamaspread", "cf1", "cf2",
 
 # Examine F1 scores from the models
 
-> F1 score is a metric used to evaluate different models it runs on a scale from 0 to 1 with the larger value meaning the model performs better. F1 score is a combination of precision/recall and helps in situations where outcomes are highly skewed in one direction.  eg 95% samples are wins, 5% are losses. In that example, I could make a model that blindly predicts win every time and I would be 95% correct... F1 adjusts for this fact and would penalize me for the false negatives.
+> F1 score is a metric used to evaluate different models it runs on a scale from 0 to 1 with the larger value meaning the model performs better. F1 score is a combination of precision/recall and helps in situations where outcomes are highly skewed in one direction.  eg 95% samples are wins, 5% are losses. In that example, a model that blindly predicts a win every time would be 95% correct... F1 adjusts for this fact and would penalize for the false negatives.
 
-```{r}
+```{r, out.width='100%'}
 # Build a small dataframe to hold my F1 scores.
 
 model <- c("model0", "model1", "model2")
@@ -177,6 +193,7 @@ head(errDF)
 # plot
 # convert to long format
 errDF_long <- melt(errDF, id = "model")
+# Note, I had to enable Arial fonts if running locally on Mac OSX
 ggplot(data = errDF_long, 
        aes(x = variable, y = value , group = model, colour = model)) +
        geom_line() +
@@ -184,12 +201,20 @@ ggplot(data = errDF_long,
        ylab("F1 Score") +
        ggtitle("F1 Score vs. Quarter")
 
-# going from model0 -> model1 yields a decent improvement, but after that the improvement is marginally better with the extra terms
+#Going from model0 to model1 yields a decent improvement, but after that the improvement is marginally better with the extra terms
 ```
+
 
 ***
 
 # Lets take a look at some of the Errors to see if there is any pattern
+>Some errors due to 
+ 1. inaccurate predictions early in game ....
+ 2. close scores at the end
+ 3. comeback victories
+ 4. games where the spread had to strong an effect game at the end
+ 5. teams that had an early lead, even though not favored ended  up winning
+
 ```{r}
 predictions_2 <- as.data.frame(f1m0[2])
 test <- as.data.frame(f1m0[3])
@@ -204,11 +229,6 @@ head(error_check_false2, n = 20)
 
 # f1m3 <- trainAndTest(logisticDF, c("scoreb-scorea",  "teamaspread", "cf1", "cf2", "cf3","cf4" ))
 
-# Some errors due to 
-# early in game ....
-# close scores at the end
-# some games the spread strongly effects game at the end... mabye scale that somehow by time left ?
-# teams that had an early lead, even though not favored did end up winning.  maybe add a scorediff^2
 
 ```
 
@@ -217,7 +237,8 @@ head(error_check_false2, n = 20)
 # Logistic Analysis And Explanation
 
 > Complex Model 2 Discussion
-When the logistic regression model is trained, the weights corresponding to each feature are optimized to minimize the error of the predictions.  Below are the weights from the final model that was trained with 5 features.
+
+> When the logistic regression model is trained, the weights corresponding to each feature are optimized to minimize the error of the predictions.  Below are the weights from the final model that was trained with 5 features.
 
 ```{r}
 print(f1m2[[4]]$coefficients[-1])
@@ -235,38 +256,6 @@ This means that there is a 25% relative increase in the probablity the home team
 
 ***
 
-# Function to predict new examples (Requires debug, potentially REMOVE)
+# Next Steps
 
-```{r}
-getPrediction_model2 <- function(teama, scorea, teamb, scoreb, timeleft, teamaspread, model){
-  
-  pct_left <- timeleft / 48 * 100
-  
-  coef <- model[[4]]$coefficients
-
-  logit <- sum(coef * c(1, 
-                        scoreb-scorea, 
-                        teamaspread, 
-                        (1/((pct_left / 25 + .01) ^ .5)) * (scoreb - scorea),   
-                        (1/((pct_left / 2.0 + .01) ^ 1.3)) * (scoreb - scorea), 
-                        timeleft / 48 * (-teamaspread)))
-                        
-  prob <- exp(logit)/(1+exp(logit))
-  winner <- ifelse(prob > .5, paste(teamb), paste(teama) )
-  
-  cat(teama, "(away) vs. ", teamb, "(home)", collaspe = "\n")
-  cat("Spread(Home Team): ", teamaspread, " ( + means home team is not favored)", collaspe = "\n")
-  cat("Time Left: ", timeleft, collaspe = "\n")
-  cat("Predicted Winner: ", winner, "Probability: ", prob, collaspe = "\n")
-  
-}
-```
-
-***
-
-# Simple Predictor based on a new Example ....
-```{r}
-getPrediction_model2("lac",88, "por", 96, 20.0, -8.0, f1m1)
-```
-
- 
+> This is the end of the model building portion of the analysis.  The next step for this analysis was to implement a prediction service and a web page that made use of the service.  The HOWTO documents the steps and some details regarding how to deploy the app.  For a live look at the app, see this site ... http://169.55.24.28:6001/
