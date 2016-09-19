@@ -1,11 +1,9 @@
 ---
-title: "NBA_Data_Wrangling"
-author: "Catherine C."
-date: "September 14, 2016"
-output: html_document
+title: "NBA Data Wrangling using IBM Data Science Experience (DSX)"
+authors: "Catherine Cao, Dustin VanStee"
+date: "September 17, 2016"
 ---
 
-# make change here
 <style>
 pre {
   overflow-x: auto;
@@ -16,6 +14,21 @@ pre code {
 }
 </style>
 
+> Have you ever wanted predict outcomes of NBA games in real time as the games are occurring?  This webpage is part 1 or a 2 part series that will describe the methods you can use to build your own prediction model.  We will leverage IBM's Data Science Experience environment with Rstudio to build linear and logistic regression models using R and Spark.  
+
+![datascience.ibm.com](https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/dsx.png)
+
+As a final step, we deploy an app in IBM's Bluemix using NodeJS.  The site is live and lets you interact with the model that was built using the analysis from the R. 
+
+![169.55.24.28:6001](https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/nodejsapp.png)
+
+>This site holds the live hosted website running the models from the analysis
+http://169.55.24.28:6001/
+
+>All the source for this demo including the HOWTO is located on GitHub. 
+https://github.com/dustinvanstee/nba-rt-prediction
+
+>Lets get started!
 ```{r global_options, echo = FALSE, include = FALSE}
 options(width = 999)
 knitr::opts_chunk$set(message = FALSE,
@@ -23,50 +36,40 @@ knitr::opts_chunk$set(message = FALSE,
 ```
 
 # Import libraries
-> Note: run *intall.packages()* before loading the packages.
+> Note: run *install.packages()* before loading the packages.
 ```{r message = FALSE}
-# general data maniputlation: summarise, filter, etc.
-# install.packages("dplyr")
+
+# install.packages("dplyr")      # general data manipulation: summarise, filter, etc.
+# install.packages("plyr")
+# install.packages("chron")      # manipulation of date/time data
+# install.packages("scatterD3")  # interactive plots
+# install.packages("plotly")
+# install.packages("RCurl")
+
+library(RCurl)
 library(dplyr)
-
-#install.packages("plyr")
 library(plyr)
-
-# manipulation of date/time data
-#install.packages("chron")
 library(chron)
-
-# interactive plots
-#install.packages("scatterD3")
 library(scatterD3)
-
-#install.packages("plotly")
 library(plotly)
 
-
-#install.packages("RCurl")
-library(RCurl)
-
 ```
+
 
 ***
 
-# Inspect Score Data
-```{r}
-lines <- readLines(textConnection(getURL("https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/scores_nba.test.dat")))
+# Download Game Score Data from Github into Dataframe
+```{r label = "test", message = FALSE}
+#Curl data from Github
+nba_scores_lines <- readLines(textConnection(getURL("https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/scores_nba.test.dat")))
 
-head(lines)
-```
+# Split CSV line array into tokens, and load them into dataframe
+nba_scores_DF <- as.data.frame(do.call(rbind, strsplit(nba_scores_lines, ",")), stringsAsFactors=FALSE)
 
-***
-
-# Load in NBA Score Data Sets
-```{r}
-# turn the .dat file to dataframe
-nba_scores_DF <- as.data.frame(do.call(rbind, strsplit(lines, ",")), stringsAsFactors=FALSE)
-
-# Since I don't have a header in the data set, I want to specify the column metadata
+# Since there isnt header in the data set, specify the column metadata
 colnames(nba_scores_DF) <- c("dateOrig","ts","teamlonga", "scorea", "teamlongb", "scoreb", "timestring", "timeleft", "gameid")
+
+# Apply Types to the data  
 nba_scores_DF2 <- transform(nba_scores_DF, 
                             dateOrig = as.Date(dateOrig),
                             ts = as.character(ts),
@@ -83,27 +86,31 @@ nba_scores_DF2 <- transform(nba_scores_DF,
 
 # Inspect Historical score data
 
-> This data is the raw input that contains a record for each update of the game.
-Data has some errors and redundancies that must be removed.  Will discuss that as we go along ....
-in particular, we need to seperate the in game scores and the final score and re-merge them for our model
+> This data is the raw input that contains a record for each update of the game.  Each game has approximately ~120 data points from start to finish.  Games were sampled on 1 minute intervals.
+The data has some errors and redundancies that will be removed.  The first step needed is to seperate the in game scores and the final scores.  The final score outcome will end up being the value that will try to be predicted , and therefore must be appended to every in game score.
 
 ```{r}
-# NAs are introduced because the raw data has invalid data points, so remove these observations
+# NAs (not available) are introduced because the raw data has invalid data points, so remove these observations
 rtscoresAndFinalDF <- na.omit(nba_scores_DF2)
+
+# Print the dimensions of the data.  Rows are the number of individual score data points.
 dim(rtscoresAndFinalDF) #16746     9
 
+# Take a look at the first few rows of the dataframe
 head(rtscoresAndFinalDF)
 
+# Final Scores
 head(filter(rtscoresAndFinalDF, grepl("FINAL", timestring)))
 
+# Scores from 1st quarter
 head(filter(rtscoresAndFinalDF, grepl("1ST", timestring)))
 
 ```
 ***
 
-# UDFs for creating extra columns in real time data frame
+# Utility Function to Map Team Names and Convert Dates
 
->  These were a couple custom UDF's I needed to cleanse the data and also to add a few features based on a proprietary way of combining the score with the time left.
+>  The odds data and score data files had a different naming conventions for the teams.  This function will be used to map all long team names into 3 letter acronym
 
 ```{r}
 # Function to turn long team name to short
@@ -143,8 +150,13 @@ monthMap <-function(x) {
   return(num) 
 }
 
-# Date Logic to adjust for games that finish on the day after ....
-# This is due to not having a great key to join my tables ...
+# Unique key for each game consists of date, home team, away team.  For games that span multiple days due to 
+# continuing through midnight, date logic is required to adjust some of the score data. 
+
+# Inputs : input date, timestamp 
+# Retuns : adjusted date
+
+# If time is midnight -> 3am EST, then adjust
 dateadjustudf <- function(datein, tsin){
                    newdate <- c()
                    for (i in 1:length(tsin)){
@@ -156,19 +168,15 @@ dateadjustudf <- function(datein, tsin){
                     }
                    return(newdate)
                   }
-
-# UDFs to create some extra features ... this one is for an experiemental combination of Time left and Score difference.  
-# Made this via intuition.  This can be extended to add other custom features
-# val crossOverTime = 8
-# val exponentScaler = 0.5
-# There is no need to create UDFs here
-
 ```
 
 ***
 
-# Preproces the Real Time and Final Score Data . Add some useful columns to the data set
-> Here I create some extra columns for later use. 
+
+***
+
+# Preprocess the In Game and Final Score Data
+> Remove overtime, add keys for joins, and perform date transformations 
 ```{r}
 # Remove Overtime games from this analysis
 rtscoresAndFinalDF <- filter(rtscoresAndFinalDF, !grepl(".*OT.*", timestring))
@@ -181,24 +189,27 @@ rtscoresAndFinalDF$teamb <- teamMap(rtscoresAndFinalDF$teamlongb)
 # Add a score differential Column 
 rtscoresAndFinalDF$scorea_scoreb <- rtscoresAndFinalDF$scorea - rtscoresAndFinalDF$scoreb
 
-# Transform the Date.  This is for games that spanned multiple days and gave me a headache.  
+# Transform the Date.  This is for games that spanned multiple days. 
 # Games adjusted to the day they started on.
 rtscoresAndFinalDF$date <-  dateadjustudf(rtscoresAndFinalDF$dateOrig, rtscoresAndFinalDF$ts)
 rtscoresAndFinalDF$date <- as.Date(rtscoresAndFinalDF$date, origin = "1970-01-01")
 
-# Create a Key for me to use to join with odds data later.  Key = date.teama.teamb
+# Create a key to join with odds data later.  Key = date.teama.teamb
 for (i in 1:nrow(rtscoresAndFinalDF)){
   rtscoresAndFinalDF$key[i] <- paste0(rtscoresAndFinalDF$date[i], ".", rtscoresAndFinalDF$teama[i], ".", rtscoresAndFinalDF$teamb[i])
 }
+
+#rtscoresAndFinalDF$key2 <- paste(rtscoresAndFinalDF$date, rtscoresAndFinalDF$teama, rtscoresAndFinalDF$teamb, sep=".")
+
 ```
 
 ***
-# Separate The Real Time And Final Data From One Common Dataframe To Two Dataframes
-> Currently based on the way the data was sampled, both real time scores and final scores are written as seperate records to the same file. I need to pull these apart, and then join the dataframes so that I have a real time score and features and know if the game was won or lost ....
+# Separate The In Game And Final Data From One Common Dataframe To Two Dataframes
+> Based on the way the data was sampled, both i ngame scores and final scores are written as seperate records to the same file. For building predictive models, each in game score needs to have the final score appended to it.  After the data is seperated, a few extra features will be added to the in game scores, and then the in game and final scores will be joined.
 
 ```{r}
 # Create Final Score DF
-# Note a shortcut for repeating the dataframe within the filter is to use a $df.filter(df("foo").contains ... is equiv to df.filter($"foo".contains)
+# filter out any score that has FINAL
 finalscoresDF <- filter(rtscoresAndFinalDF, grepl("FINAL", timestring))
 
 # Rename some columns so that join later doesnt have name overlaps
@@ -223,10 +234,8 @@ for (i in 1 : nrow(finalscoresDF)){
 
 
 #################################################################################################################
-# Create Real time score DF and more wrangling
-
-# Remove Halftime records and these other cases as my datasource doesnt always change the quarter well
-# as this particular case isn't handled well... (for now)
+# Create In Game score DF and remove some problematic data points.
+# Remove halftime records and these other cases as  datasource doesnt always update the quarter change well
 rtscoresDF <- filter(rtscoresAndFinalDF, !grepl('HALF', timestring), !grepl('FINAL', timestring),
                    timestring != "(12:00 IN 1ST)" ,
                    timestring != "(12:00 IN 2ND)" , 
@@ -238,7 +247,7 @@ rtscoresDF <- filter(rtscoresAndFinalDF, !grepl('HALF', timestring), !grepl('FIN
                    timestring != "(END OF 4TH)" )
 
 
-# Create real time score difference
+# Create in game score difference
 rtscoresDF$scorea_scoreb <-  rtscoresDF$scorea - rtscoresDF$scoreb
 rtscoresDF$scoreb_scorea <-  rtscoresDF$scoreb - rtscoresDF$scorea
 
@@ -247,7 +256,8 @@ rtscoresDF$scoreb_scorea <-  rtscoresDF$scoreb - rtscoresDF$scorea
 rtscoresDF$pct_complete <- (((rtscoresDF$timeleft * -1) + 48 )/48.0)*100
 rtscoresDF$pct_left <- 100 - rtscoresDF$pct_complete
 
-# Create a unique feature. Idea here is that I have intuition that timeleft and score difference are a strong predictor when combined
+# Create some custom features that weight score difference more as the game comes near to finish 
+# These features were added as initial models did not fit the end of game well.
 rtscoresDF$cf1 <- (1/((rtscoresDF$pct_left/25 + .01)^.5)) * rtscoresDF$scoreb_scorea
 rtscoresDF$cf2 <- (1/((rtscoresDF$pct_left/2.0 + .01)^1.3))*rtscoresDF$scoreb_scorea
 
@@ -257,41 +267,39 @@ rtscoresDF$cf2 <- (1/((rtscoresDF$pct_left/2.0 + .01)^1.3))*rtscoresDF$scoreb_sc
 
 # Custom Feature Explanation
 
-> After building my initial model, I noticed that the logistic model was adjusting the probabilities well at the end of the games. I had some examples where I had 0 time left in the game, and yet the logistic model was giving a 70% chance of victory for a team. I speculated this was due to the fact that my original features were not fitting the end of game very well. To fix this, I created a spreader custom feature that basically takes the score difference and amplifies it as the score nears the end of the game. This way this feature is very predictive at the end of games and can help adjust the probablities to be more certain at the end of games.
+> After building the initial model without custom features, the logistic model was not adjusting the probabilities well at the end of the games. There some examples when there was 0 minutes left in the game, and yet the logistic model was giving a 70% chance of victory for a team. This was due to the fact that the original features were not fitting the end of game very well. To fix this, a custom feature was added that takes the score difference and amplifies it as the score nears the end of the game. This feature dominates at the end of games and helps fit the data at the end of games.
 
-
-
-# Show effect of custom spreader feature 
+# Score difference as a function of % Complete
 ```{r, out.width = 'auto'}
 # subset a dataframe for scatterplot
-spreader <- filter(rtscoresDF, pct_complete < 95)
+# spreader <- filter(rtscoresDF, pct_complete < 95)
 
 # draw interactive scatter plot
-scatterD3(x = spreader$pct_complete, y = spreader$scoreb_scorea, col_var = spreader$key)
+scatterD3(x = rtscoresDF$pct_complete, y = rtscoresDF$scoreb_scorea, col_var = rtscoresDF$key, xlab = "% of Game Complete", ylab = "score difference", xlim = c(0,100),  point_size = 10)
 ```
 
 ***
 
-# Inspect Custom features ...
+# Custom score difference spreader feature
 ```{r, out.width = 'auto'}
-scatterD3(x = spreader$pct_complete, y = spreader$cf2, col_var = spreader$key)
+scatterD3(x = rtscoresDF$pct_complete, y = rtscoresDF$cf1, col_var = rtscoresDF$key, xlab = "% of Game Complete", ylab = "score difference amplified", xlim = c(0,100), ylim = c(-20,20),  point_size = 10)
 ```
 ***
 
-# Lets Take A Look Of What We Have For The Two Dataframes We Just Wrangled
+# Print out a few records from Final and In game dataframes
 ```{r, echo = FALSE}
 # Some Printouts .....
-print("final scores data frame")
+print("Final scores data frame")
 head(finalscoresDF)
 paste0("Total Games = ", nrow(finalscoresDF))
-print("real time scores data frame")
+print("In game scores data frame")
 head(rtscoresDF)
 paste0("Total Number of rt score records = ", nrow(rtscoresDF))
 ```
 
 
 # Inspect Odds Data
-> How to Read the Raw Odds data
+> How to Interpret the Raw Odds data
 
 
     
@@ -304,7 +312,7 @@ paste0("Total Number of rt score records = ", nrow(rtscoresDF))
         A positive number means you need to bet 100$ to get a 145$ payout
 ***
 
-# load in odds data
+# Load in Raw Odds Data and Parse into Dataframe
 ```{r}
 xml <- readLines(textConnection(getURL("https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/nbaodds_042516.xml")))
 
@@ -395,9 +403,10 @@ oddsDF$teambml <- as.numeric(as.character(oddsDF$teambml))
 oddsDF$teama <- as.character(oddsDF$teama)
 oddsDF$teamb <- as.character(oddsDF$teamb)
 oddsDF$key <- paste0(oddsDF$dateStr, ".", oddsDF$teama, ".", oddsDF$teamb)
+# Print the Dimensions of the data.  Currently collected 161 games
 dim(oddsDF) #161  10
 
-# add the groupby and average below because I was getting the game odds over multiple days, and it was adding noise to the analysis
+# add the groupby and average below because some games had odds over multiple days, and it was adding noise to the analysis
 
 oddsDF2 <- ddply(oddsDF, c("key", "teamlonga", "teamlongb", "teama", "teamb", "dateStr"), summarise,
                teamaspread = mean(teamaspread),
@@ -426,10 +435,11 @@ paste("total games collected = ", nrow(oddsDF2))
 ```
 
 ***
+# Analyze the Odds Data
 
-# Avg Team Away Game Spread -  ( hint < 0 means favorite)
+## Avg Team Away Game Spread -  ( hint < 0 means favorite)
 
-> Here we are averaging the away spread per team.  If the bar is above the zero line, then the team is an underdog, and under the line the team is the favorite. 8 of the 32 teams were favorites on the road... and they are the likely suspect including CLE/GST/OKC
+> Here we are averaging the away spread per team.  If the bar is above the zero line, then the team is an underdog, and under the line the team is the favorite. 8 of the 32 teams were favorites on the road including Golden State and Cleveland...
 
 ```{r, out.width = 'auto'}
 # visualize away spread data
@@ -454,7 +464,7 @@ p
 
 ***
 
-# Avg Home Team Game Spread - (Hint > 0  means underdog)
+## Avg Home Team Game Spread - (Hint > 0  means underdog)
 > Here we are averaging the home spread per team.  If the bar is above the zero line, then the team is an underdog, and under the line the team is the favorite. Note here that the home teams are favored much more, with the usual suspects having a very large advantage (SAN/GST/OKC)
 
 ```{r, out.width = 'auto'}
@@ -480,9 +490,9 @@ p
 
 # Join odds and final scores data.
 ```{r}
-# Here is where we join the Odds/Realtime scores/ Final Scores into one wholistic data set as input for Logistic Machine Learning
+# Here is where   the Odds/In Games scores/ Final Scores are joined into one wholistic data set as input for Logistic/Linear regression
 
-# Create a smaller Final Score Dataframe.  Just keep the key, final score a and b, the win/loss indicator
+# Create a smaller Final Score Dataframe and prune away some columns.  Just keep the key, final score a and b, the win/loss indicator
 finalslicedscoresDF <- finalscoresDF[c("key","fscorea", "fscoreb", "fscorea_fscoreb", "fscoreb_fscorea", "away_win", "home_win")]
 
 # First Join the 2 smallest data frames ... odd and final.
@@ -500,7 +510,7 @@ paste("total games collected:", nrow(gameDF)) #103
 ```
 
 *** 
-# Lets see if there are some correlations ... Spread vs Final Score Difference 
+# Correlation of Spread vs Final Score Difference 
 ```{r, out.width = 'auto'}
 # Here we show that the better a team is (negative spread, the more they are likely to win ...)
 
@@ -518,8 +528,8 @@ scatterD3(x = gameDF$fscoreb_fscorea, y = gameDF$teamaspread)
 
 ***
 
-# Home / Away sensitivity to Point Spread 
-```{r, out.width = 'auto'}
+# Vegas Score Prediction vs Actual Score Outcome
+```{r, ,out.width='50%', fig.width=3, fig.height=3 }
 # Here we can show another weak correlation of the vegas overunder/spread to the actual final outcome.
 # vegas_fscore was calculated by taking overunder/2 +- the spread/2 to get a projection of
 # the home/away teams score
@@ -528,14 +538,18 @@ scatterD3(x = gameDF$fscoreb_fscorea, y = gameDF$teamaspread)
 # we will see how this term plays when we dig into the linear model
 # here only home team is shown, but same trend holds for away team
 
-scatterD3(x = gameDF$teamb_vegas_fscore, y = gameDF$fscoreb)
+
+# Home
+scatterD3(x = gameDF$teamb_vegas_fscore, y = gameDF$fscoreb); 
+# Away
+scatterD3(x = gameDF$teama_vegas_fscore, y = gameDF$fscorea)
 ```
 
 ***
 
-# Join The Game Dataframe With The Real Time Score Dataframe
+# Join The Game Dataframe With The In Game Score Dataframe
 ```{r}
-# This is the bigger merge.  Merging the odds/final score data with the real time indicators ...
+# This is the bigger merge.  Merging the odds/final score data with the in game indicators ...
 lrDF <- merge(gameDF, rtscoresDF, by = "key")
 print("lrDF : Logistic Regression Data Frame")
 head(lrDF)
@@ -569,25 +583,15 @@ lrDF_filtered <- filter(lrDF, dfa > -30)
 
 ***
 
-# Lets Look at some stats from logistic Regression dataframe
+# Lets Look at some stats from joined dataframe
 ```{r}
 
 summary(lrDF_filtered)
 ```
 
-# Visualize some of our Time Series Data. ...
-```{r, out.width = 'auto'}
-# here we can see the trajectory of some of the games .....    
-# upper left beginning ... upper right (win), lower right (loss)
-# cool visual .... gives an idea about how the games flow
-tsplot <- filter(lrDF_filtered, grepl("cle", key) | grepl("gst", key))
-
-scatterD3(x = tsplot$pct_complete, y = tsplot$scoreb_scorea, col_var = tsplot$key)
-```
-
-***
 
 # Samples per Game Visualization - Data Quality check
+> One improvement to the data set would involve normalizing all games to have the same number of data points per game.  Some games that ran long ended up having a lot more samples.
 ```{r, out.width = 'auto'}
 
 DQ_check <- ddply(lrDF_filtered, c("key"), summarise,
@@ -607,8 +611,8 @@ p
 
 # Save Out Dataframe For Further Analysis with Logistic and Linear Regression Notebooks
 ```{r}
-# Wanted to save out the dataset at this point as I will branch into seperate work efforts for a Logistic/Linear model building
-# drop some columns as we move on to next step !!
+# Wanted to save out the dataset at this point.  Analysis will branch into seperate work efforts for a Logistic/Linear model building
+# Also drop some columns as we move on to next step !!
 
 lrDF_final <- lrDF_filtered
 lrDF_final$dateOrig <- NULL
