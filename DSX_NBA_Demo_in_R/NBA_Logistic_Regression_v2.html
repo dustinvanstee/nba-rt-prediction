@@ -9,7 +9,7 @@
 <meta name="generator" content="pandoc" />
 
 
-<meta name="author" content="Catherine Cao and Dustin VanStee" />
+<meta name="author" content="Dustin VanStee, Catherine Cao" />
 
 <meta name="date" content="2016-09-19" />
 
@@ -117,7 +117,7 @@ $(document).ready(function () {
 
 
 <h1 class="title toc-ignore">Logistic Regression</h1>
-<h4 class="author"><em>Catherine Cao and Dustin VanStee</em></h4>
+<h4 class="author"><em>Dustin VanStee, Catherine Cao</em></h4>
 <h4 class="date"><em>September 19, 2016</em></h4>
 
 </div>
@@ -150,14 +150,15 @@ pre code {
 </blockquote>
 <div id="imports" class="section level1">
 <h1>Imports</h1>
-<pre class="r"><code>#install.packages(&quot;dplyr&quot;)
-#install.packages(&quot;reshape2&quot;)
-#install.packages(&quot;ggplot2&quot;)
-#install.packages(&quot;RCurl&quot;)
+<pre class="r"><code>packages &lt;- c(&quot;dplyr&quot;, &quot;reshape&quot;, &quot;ggplot2&quot;, &quot;RCurl&quot;)
+
+if (length(setdiff(packages, rownames(installed.packages()))) &gt; 0) {
+  install.packages(setdiff(packages, rownames(installed.packages())), repos =&quot;http://cran.rstudio.com/&quot;)  
+}
 
 library(dplyr)
-library(&quot;reshape2&quot;)
-library(&quot;ggplot2&quot;)
+library(reshape2)
+library(ggplot2)
 library(RCurl)</code></pre>
 <hr />
 </div>
@@ -353,6 +354,9 @@ ggplot(data = errDF_long,
 </div>
 <div id="lets-take-a-look-at-some-of-the-errors-to-see-if-there-is-any-pattern" class="section level1">
 <h1>Lets take a look at some of the Errors to see if there is any pattern</h1>
+<blockquote>
+<p>Some errors due to 1. inaccurate predictions early in game …. 2. close scores at the end 3. comeback victories 4. games where the spread had to strong an effect game at the end 5. teams that had an early lead, even though not favored ended up winning</p>
+</blockquote>
 <pre class="r"><code>predictions_2 &lt;- as.data.frame(f1m0[2])
 test &lt;- as.data.frame(f1m0[3])
 
@@ -404,32 +408,29 @@ head(error_check_false2, n = 20)</code></pre>
 ## 18        1             37 0.1938014   san     35   uta     25 30.366667        -3.5      88      86        0              -2
 ## 19        1             80 0.2571016   san     69   uta     61 10.033333        -3.5      88      86        0              -2
 ## 20        1             68 0.4176881   san     55   uta     51 15.816667        -3.5      88      86        0              -2</code></pre>
-<pre class="r"><code># f1m3 &lt;- trainAndTest(logisticDF, c(&quot;scoreb-scorea&quot;,  &quot;teamaspread&quot;, &quot;cf1&quot;, &quot;cf2&quot;, &quot;cf3&quot;,&quot;cf4&quot; ))
-
-# Some errors due to 
-# early in game ....
-# close scores at the end
-# some games the spread strongly effects game at the end... mabye scale that somehow by time left ?
-# teams that had an early lead, even though not favored did end up winning.  maybe add a scorediff^2</code></pre>
+<pre class="r"><code># f1m3 &lt;- trainAndTest(logisticDF, c(&quot;scoreb-scorea&quot;,  &quot;teamaspread&quot;, &quot;cf1&quot;, &quot;cf2&quot;, &quot;cf3&quot;,&quot;cf4&quot; ))</code></pre>
 <hr />
 </div>
 <div id="logistic-analysis-and-explanation" class="section level1">
 <h1>Logistic Analysis And Explanation</h1>
 <blockquote>
-<p>Complex Model 2 DiscussionWhen the logistic regression model is trained, the weights corresponding to each feature are optimized to minimize the error of the predictions. Below are the weights from the final model that was trained with 5 features.</p>
+<p>Complex Model 2 Discussion</p>
+</blockquote>
+<blockquote>
+<p>When the logistic regression model is trained, the weights corresponding to each feature are optimized to minimize the error of the predictions. Below are the weights from the final model that was trained with 5 features.</p>
 </blockquote>
 <pre class="r"><code>print(f1m2[[4]]$coefficients[-1])</code></pre>
 <pre><code>##   teamaspread scoreb_scorea           cf1           cf2           cf3 
 ##     0.1926325    -1.3905259    10.2575355    -0.8349576    -0.6840641</code></pre>
 <p>Interpretting weights can be tricky, especially if input features are functions of each other (ie, if one feature changes, it implies another feature changes)</p>
 <p>Lets look at just the away team spread, as this feature is not a function of any other feature.</p>
-<p>The away spread weight is 0.2198502. If the spread increases by 1, then the probability of the away team winning is</p>
+<p>The away spread weight is 0.1926325. If the spread increases by 1, then the probability of the away team winning is</p>
 <center>
 <h3>
-<em>e</em><sup>0.2198502</sup> = 1.24589
+<em>e</em><sup>0.1926325</sup> = 1.212437
 </h3>
 </center>
-<p>This means that there is a 25% relative increase in the probablity the home team will win for every one point change in away team spread.</p>
+<p>This means that there is a 21% relative increase in the probablity the home team will win for every one point change in away team spread.</p>
 <hr />
 </div>
 <div id="next-steps" class="section level1">

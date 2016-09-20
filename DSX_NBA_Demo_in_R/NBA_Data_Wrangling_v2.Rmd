@@ -1,6 +1,6 @@
 ---
 title: "NBA Data Wrangling using IBM Data Science Experience (DSX)"
-authors: "Catherine Cao, Dustin VanStee"
+author: "Dustin VanStee, Catherine Cao"
 date: "September 17, 2016"
 ---
 
@@ -42,7 +42,7 @@ knitr::opts_chunk$set(message = FALSE,
 packages <- c("dplyr", "plyr", "chron", "scatterD3", "plotly", "RCurl", "rmarkdown")
 
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
-  install.packages(setdiff(packages, rownames(installed.packages())))  
+  install.packages(setdiff(packages, rownames(installed.packages())), repos ="http://cran.rstudio.com/")  
 }
 
 library(rmarkdown)
@@ -511,12 +511,11 @@ paste("total games collected:", nrow(gameDF)) #103
 ```
 
 *** 
-<<<<<<< HEAD
 
 # Lets see if there are some correlations ... Spread vs Final Score Difference 
 =======
 # Correlation of Spread vs Final Score Difference 
->>>>>>> origin/master
+
 ```{r, out.width = 'auto'}
 # Here we show that the better a team is (negative spread, the more they are likely to win ...)
 

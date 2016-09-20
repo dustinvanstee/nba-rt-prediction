@@ -1,6 +1,6 @@
 ---
 title: "Logistic Regression"
-author: "Catherine Cao and Dustin VanStee"
+author: "Dustin VanStee, Catherine Cao"
 date: "September 19, 2016"
 output: html_document
 ---
@@ -39,7 +39,7 @@ knitr::opts_chunk$set(message = FALSE,
 packages <- c("dplyr", "reshape", "ggplot2", "RCurl")
 
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
-  install.packages(setdiff(packages, rownames(installed.packages())))  
+  install.packages(setdiff(packages, rownames(installed.packages())), repos ="http://cran.rstudio.com/")  
 }
 
 library(dplyr)
@@ -248,11 +248,11 @@ Interpretting weights can be tricky, especially if input features are functions 
 
 Lets look at just the away team spread, as this feature is not a function of any other feature.
 
-The away spread weight is 0.2198502.  If the spread increases by 1, then the probability of the away team winning is 
+The away spread weight is 0.1926325.  If the spread increases by 1, then the probability of the away team winning is 
 
-<center> <h3> _e_^0.2198502^ = 1.24589 </h3></center>
+<center> <h3> _e_^0.1926325^ = 1.212437 </h3></center>
 
-This means that there is a 25% relative increase in the probablity the home team will win for every one point change in away team spread.
+This means that there is a 21% relative increase in the probablity the home team will win for every one point change in away team spread.
 
 ***
 
