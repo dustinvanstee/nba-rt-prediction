@@ -53,7 +53,7 @@ library(RCurl)
 # Read In CSV File For Logistic Regression
 > Read data from part1.  Data preloaded into Github
 ```{r}
-logisticDF <- read.csv("https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/DSX_NBA_Demo_in_R/nba-datawrangle-lrDF.csv",header=TRUE,sep=",")
+logisticDF <- read.csv(textConnection(getURL("https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/DSX_NBA_Demo_in_R/nba-datawrangle-lrDF.csv")),header=TRUE,sep=",")
 
 logisticDF$cf3 <- logisticDF$pct_left * logisticDF$teambspread / 100
 logisticDF$cf4 <- logisticDF$scoreb_scorea ^ 3
