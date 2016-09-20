@@ -1,0 +1,261 @@
+---
+title: "Logistic Regression"
+author: "Dustin VanStee, Catherine Cao"
+date: "September 19, 2016"
+output: html_document
+---
+
+<style>
+pre {
+  overflow-x: auto;
+}
+pre code {
+  word-wrap: normal;
+  white-space: pre;
+}
+</style>
+
+> Have you ever wanted predict outcomes of NBA games in real time as the games are occurring?  This webpage is part 2 or a 2 part series that will describe the methods you can use to build your own prediction model.  We will leverage IBM's Data Science Experience environment with Rstudio to build linear and logistic regression models using R and Spark.  
+
+![datascience.ibm.com](https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/dsx.png)
+
+> This webpage shows how to perform logistic regression on the prepared NBA data frame to build a model that will help make in game predictions about which team is most likely to win.  
+
+>This site holds the live hosted website running the models from the analysis
+http://169.55.24.28:6001/
+
+>All the source for this demo including the HOWTO is located on GitHub. 
+https://github.com/dustinvanstee/nba-rt-prediction
+
+```{r global_options, echo = FALSE, include = FALSE}
+options(width = 999)
+knitr::opts_chunk$set(message = FALSE,
+                      cache = FALSE, tidy = FALSE, size = "small")
+```
+
+# Imports
+```{r message = FALSE}
+
+packages <- c("dplyr", "reshape", "ggplot2", "RCurl")
+
+if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(packages, rownames(installed.packages())), repos ="http://cran.rstudio.com/")  
+}
+
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(RCurl)
+```
+
+***
+
+# Read In CSV File For Logistic Regression
+> Read data from part1.  Data preloaded into Github
+```{r}
+logisticDF <- read.csv("https://raw.githubusercontent.com/dustinvanstee/nba-rt-prediction/master/DSX_NBA_Demo_in_R/nba-datawrangle-lrDF.csv",header=TRUE,sep=",")
+
+logisticDF$cf3 <- logisticDF$pct_left * logisticDF$teambspread / 100
+logisticDF$cf4 <- logisticDF$scoreb_scorea ^ 3
+
+```
+
+***
+
+# Inspect the Data
+> Print out a summary of the dataframe to make sure the data is loaded properly.
+```{r}
+# There are approximately 13000 data points
+summary(logisticDF)
+```
+
+***
+
+# Function to Create the Model and Train it and Test it
+>Since there are multiple models to be trained, use this function to partition the data into training and test data sets.  This function will return a number of objects.  It returns the per quarter error rates, prediction dataframe, test data, and the model.
+```{r}
+
+
+trainAndTest <- function(data, features){
+  cat("*************************************************", collapse = "\n")
+  
+  # Split the data into training and test sets
+  set.seed(1)
+  train <- sample_frac(data, 0.7)
+  test <- data[-as.numeric(rownames(train)),]
+  cat("Training Samples = ", nrow(train) , collapse = "\n")
+  cat("Test Samples = ", nrow(test), collapse = "\n")
+
+# standardize the data
+  train_features <- as.data.frame(scale(train[names(train) %in% features]))
+  test_features <- as.data.frame(scale(test[names(test) %in% features]))
+
+# add pct_complete since we will need it when compute f1 score for 4 quarters.
+    pct_complete <- train$pct_complete
+    train_features <- cbind(train_features, pct_complete)
+    pct_complete <- test$pct_complete
+    test_features <- cbind(test_features, pct_complete)
+
+# fit the model
+  model <- glm(train$home_win ~ . - pct_complete , data = train_features, family = "binomial")
+  cat("lrModel.intercept = ", model$coefficients[1], collapse = "\n")
+  cat("lrModel.weights = ", model$coefficients[-1], collapse = "\n")
+
+# Generate Predictions
+ train_prob <- predict(model, newdata = train_features, type = "response")
+ train_fitted <- ifelse(train_prob > .5, 1, 0)
+ correct <- ifelse(train_fitted == train$home_win, 1, 0)
+ pct_comp_ceil <- ceiling(train$pct_complete)
+ trn_predictions <- data.frame(correct, pct_comp_ceil, train_prob)
+ 
+ test_prob <- predict(model, newdata = test_features, type = "response")
+ test_fitted <- ifelse(test_prob > .5, 1, 0)
+ correct2 <- ifelse(test_fitted == test$home_win, 1, 0)
+ pct_comp_ceil2 <- ceiling(test$pct_complete)
+ predictions2 <- data.frame(correct2, pct_comp_ceil2, test_prob)
+
+ 
+# Evaluate predictions and Print results
+ evaluator <- function(act, pred, data){
+    cm <- as.matrix(table(act, pred))
+    diag = diag(cm)
+    rowsums = apply(cm, 1, sum)
+    colsums = apply(cm, 2, sum)
+    precision = diag / colsums 
+    recall = diag / rowsums
+    f1 = 2 * precision[2] * recall[2] / (precision[2] + recall[2]) 
+    return(f1)
+ }
+ 
+ 
+ trn_tot_f1 <- evaluator(train$home_win, train_fitted)
+ tst_tot_f1 <- evaluator(test$home_win, test_fitted)
+ 
+ Quater_f1 <- function(start, end){
+  Q <- subset(test_features, test_features$pct_complete >= start & test_features$pct_complete < end)
+  Q_prob <- predict(model, newdata = Q, type = "response")
+  Q_fitted <- ifelse(Q_prob > .5, 1, 0)
+  Q_actual <- subset(test$home_win, test$pct_complete >= start & test$pct_complete < end)
+  f1 <- evaluator(Q_actual, Q_fitted)
+  return(f1)
+}
+ 
+ f1q1 <- Quater_f1(0, 25)
+ f1q2 <- Quater_f1(25, 50)
+ f1q3 <- Quater_f1(50, 75)
+ f1q4 <- Quater_f1(75, 100)
+ 
+ cat("Total Train f1 = ", trn_tot_f1, collapse = "\n")
+ cat("Total Test f1 = ", tst_tot_f1, collapse = "\n")
+ 
+ cat("Q1 Test f1 = ", f1q1, collapse = "\n")
+ cat("Q2 Test f1 = ", f1q2, collapse = "\n")
+ cat("Q3 Test f1 = ", f1q3, collapse = "\n")
+ cat("Q4 Test f1 = ", f1q4, collapse = "\n")
+ 
+ qs <- c(f1q1, f1q2, f1q3, f1q4, tst_tot_f1)
+ 
+
+ invisible(list(qs, predictions2, test, model))
+ 
+}
+
+```
+
+***
+
+# Test and Train multiple models
+```{r warning = FALSE}
+# Evaluate 3 different Models
+
+f1m0 <- trainAndTest(logisticDF, c("scoreb_scorea"))
+
+f1m1 <- trainAndTest(logisticDF, c("scoreb_scorea", "teamaspread"))
+
+f1m2 <- trainAndTest(logisticDF, c("scoreb_scorea", "teamaspread", "cf1", "cf2", "cf3"))
+```
+
+***
+
+# Examine F1 scores from the models
+
+> F1 score is a metric used to evaluate different models it runs on a scale from 0 to 1 with the larger value meaning the model performs better. F1 score is a combination of precision/recall and helps in situations where outcomes are highly skewed in one direction.  eg 95% samples are wins, 5% are losses. In that example, a model that blindly predicts a win every time would be 95% correct... F1 adjusts for this fact and would penalize for the false negatives.
+
+```{r, out.width='100%'}
+# Build a small dataframe to hold my F1 scores.
+
+model <- c("model0", "model1", "model2")
+errDF <- cbind(as.data.frame(rbind(f1m0[[1]], f1m1[[1]], f1m2[[1]])), model)
+colnames(errDF) <- c("Q1", "Q2", "Q3", "Q4", "total", "model")
+
+head(errDF)
+
+# plot
+# convert to long format
+errDF_long <- melt(errDF, id = "model")
+# Note, I had to enable Arial fonts if running locally on Mac OSX
+ggplot(data = errDF_long, 
+       aes(x = variable, y = value , group = model, colour = model)) +
+       geom_line() +
+       xlab("") +
+       ylab("F1 Score") +
+       ggtitle("F1 Score vs. Quarter")
+
+#Going from model0 to model1 yields a decent improvement, but after that the improvement is marginally better with the extra terms
+```
+
+
+***
+
+# Lets take a look at some of the Errors to see if there is any pattern
+>Some errors due to 
+ 1. inaccurate predictions early in game ....
+ 2. close scores at the end
+ 3. comeback victories
+ 4. games where the spread had to strong an effect game at the end
+ 5. teams that had an early lead, even though not favored ended  up winning
+
+```{r}
+predictions_2 <- as.data.frame(f1m0[2])
+test <- as.data.frame(f1m0[3])
+
+error_check <- data.frame(predictions_2, test[c("teama", "scorea", "teamb", "scoreb", "timeleft", "teamaspread",'fscorea', 'fscoreb', "home_win", "fscoreb_fscorea")])
+
+error_check_false1 <- filter(error_check, correct2 == 0 & fscoreb_fscorea < 4 & fscoreb_fscorea > -4)
+head(error_check_false1, n = 20)
+
+error_check_false2 <- filter(error_check, fscoreb_fscorea < 4 & fscoreb_fscorea > -4)
+head(error_check_false2, n = 20)
+
+# f1m3 <- trainAndTest(logisticDF, c("scoreb-scorea",  "teamaspread", "cf1", "cf2", "cf3","cf4" ))
+
+
+```
+
+***
+
+# Logistic Analysis And Explanation
+
+> Complex Model 2 Discussion
+
+> When the logistic regression model is trained, the weights corresponding to each feature are optimized to minimize the error of the predictions.  Below are the weights from the final model that was trained with 5 features.
+
+```{r}
+print(f1m2[[4]]$coefficients[-1])
+```
+
+Interpretting weights can be tricky, especially if input features are functions of each other (ie, if one feature changes, it implies another feature changes)
+
+Lets look at just the away team spread, as this feature is not a function of any other feature.
+
+The away spread weight is 0.1926325.  If the spread increases by 1, then the probability of the away team winning is 
+
+<center> <h3> _e_^0.1926325^ = 1.212437 </h3></center>
+
+This means that there is a 21% relative increase in the probablity the home team will win for every one point change in away team spread.
+
+***
+
+# Next Steps
+
+> This is the end of the model building portion of the analysis.  The next step for this analysis was to implement a prediction service and a web page that made use of the service.  The HOWTO documents the steps and some details regarding how to deploy the app.  For a live look at the app, see this site ... http://169.55.24.28:6001/
