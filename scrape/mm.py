@@ -1,6 +1,6 @@
-#!/usr/bin/env python
-
+#!/usr/bin/python2.7
 #Created by Josh Fuerst
+#!/usr/bin/env python
 #Modified  by Dustin VanStee
 
 # for question/bug reports please visit http://www.fuerstjh.com and submit through contact page.
