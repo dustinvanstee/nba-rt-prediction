@@ -1,7 +1,9 @@
-DIR=/root/oddsdata
+DIR=/data/nba-rt-prediction/oddsdata
 POSTFIX=`date +%m%d%y`
 mkdir -p ${DIR}
 cd $DIR
+echo "Collecting data at " > ${POSTFIX}.log
+date >> ${POSTFIX}.log
 
 #http://www.oddsmaker.ag/rss-feeds/
 wget http://www.referincome.com/odds/rss2/basketball_nba.xml
@@ -19,3 +21,4 @@ mv baseball.xml baseball.${POSTFIX}.xml
 TG=`grep title * | grep -v OddsMaker | grep -v 'Click Here' | wc -l`
 echo Total Games = $TG
 grep title *.${POSTFIX}.xml | wc -l
+echo 
