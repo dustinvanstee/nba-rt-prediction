@@ -26,7 +26,7 @@ NHL = 'nhl'
 NCAA_BB = 'mens-college-basketball'
 
 
-def parse(base_file) : 
+def parse(base_file, within_spark=0) : 
     
     # example line --> #2016-04-05,15:07:51,Charlotte,0,Toronto,0,(7:30 PM ET),48.0,400829043
 
@@ -35,7 +35,19 @@ def parse(base_file) :
     f = open(base_file, 'r')
     i = 0
     for line in f:
-        lineary = line.split(",")
+        lineary = []
+        if(within_spark == 0) :
+            lineary = line.split(",")
+        else :
+            base_file_ary = base_file.split('=')
+            date_str  = base_file_ary[1].split('/')[0]
+            away_team = base_file_ary[2].split('/')[0]
+            home_team = base_file_ary[3].split('/')[0]
+
+            tmp = line.split(",")
+            lineary = list(date_str,tmp[0],away_team,tmp[1],home_team,tmp[2],tmp[3],tmp[4])
+
+
         gameid = ""
         
         # This if statement below, could be replaced by a nice checker function someday
@@ -116,7 +128,7 @@ def convert_time(time_string, sport) :
             # END OF [1234] Quarter
             if(in_indicator == "OF") :
                 in_indicator = "IN"
-                mm_ss = '0.0'
+                mm_ss = '0:00'
             
             if(in_indicator == "IN") :
                #pdb.set_trace()
@@ -137,6 +149,9 @@ def convert_time(time_string, sport) :
         time_left = 0.0
 
     return str(time_left)
+
+# --> 2016-04-22,23:25:27
+#2016-04-22,23:29:28,San Antonio,70,Memphis,71,(END OF 3RD),0.0,400874378
 
 
 # cur_game is an array of lists
@@ -225,7 +240,7 @@ def debug_game(game_data,nrm_game_data) :
 
 
 def write_game_data(outfile, nrm_data) :
-    pdb.set_trace()
+    #pdb.set_trace()
     with open(outfile, 'w') as csvfile :
         spamwriter = csv.writer(csvfile, delimiter=',',
                             quotechar='\'', quoting=csv.QUOTE_MINIMAL)
