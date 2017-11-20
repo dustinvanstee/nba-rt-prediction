@@ -2,6 +2,7 @@ import glob
 import pdb
 import sys
 import csv
+import re
 
 base_dir = "/data/work/git-repos/nba-rt-prediction/scoredata/"
 base_file = base_dir + "scores_nba.2015.test.dat"
@@ -65,7 +66,7 @@ def parse(base_file, within_spark=0) :
             else :
                 game_data[gameid] = list([lineary[0:8]])
     
-            print "adding " + str(lineary[0:8]) + " to  " + gameid + " game"
+            #print "adding " + str(lineary[0:8]) + " to  " + gameid + " game"
             i += 1
         # Bad line format .. dont process
         else :
@@ -139,7 +140,8 @@ def convert_time(time_string, sport) :
             elif(time_string == "(HALFTIME)") :
                 time_left = 24.0
             else :
-                print "ERROR, time not properly converted !"
+                print "ERROR, time_string " + time_string + " not properly converted !"
+
 
         else : 
             print "Passed a sport that isnt coded for"
@@ -178,45 +180,52 @@ def normalize(cur_game) :
     for i in range(0,num_samples) :
         line = convert(cur_game[i])
 
-        #if((cur_game[i][AT] == "Orlando" or cur_game[i][HT] == "Milwaukee") and cur_game[i][CT] == "(HALFTIME)") :
-        #    pdb.set_trace()
-        
-        #print line
-        cur_time = 48.0 - line[TL]
+        # Make sure every final score makes the data set ...
+        if(re.search('FINAL', cur_game[i][CT])) :
+            print "Adding final score for " + str(cur_game[i])
+            nrm_game_data.append(list(line[0:7]))  
+            #pdb.set_trace()      
 
-
-        # this determines if I need to make a new row ....
-        loop_cnt = 0
-        while(cur_time > last_assigned_time+time_step) :
-            # Perform Linear Interpolation for scores
-            if(loop_cnt == 0) :
-                nrm_line = list(line)
-            else :
-                nrm_line = list(prev_nrm_line)
-
-            nrm_line_te  = last_assigned_time+time_step
-            numerator = nrm_line_te - (48.0 - prev_line[TL])
-            nrm_line[AS] = prev_line[AS] + (line[AS]-prev_line[AS]) * ( numerator / ( prev_line[TL] - line[TL]))
-            nrm_line[HS] = prev_line[HS] + (line[HS]-prev_line[HS]) * ( numerator / ( prev_line[TL] - line[TL]))
-            nrm_line[TL] = 48.0 - nrm_line_te
-
-            nrm_game_data.append(nrm_line)
-            last_assigned_time += time_step
-            prev_nrm_line = list(nrm_line)
-            loop_cnt += 1
-
-        prev_line = line
-
-        if(cur_time == 48) :
-            #pdb.set_trace()
-            nrm_game_data.append(list(line))
+        else :
+            #if((cur_game[i][AT] == "Orlando" or cur_game[i][HT] == "Milwaukee") and cur_game[i][CT] == "(HALFTIME)") :
+            #    pdb.set_trace()
+            
+            #print line
+            cur_time = 48.0 - line[TL]
+    
+    
+            # this determines if I need to make a new row ....
+            loop_cnt = 0
+            while(cur_time > last_assigned_time+time_step) :
+                # Perform Linear Interpolation for scores
+                if(loop_cnt == 0) :
+                    nrm_line = list(line)
+                else :
+                    nrm_line = list(prev_nrm_line)
+    
+                nrm_line_te  = last_assigned_time+time_step
+                numerator = nrm_line_te - (48.0 - prev_line[TL])
+                nrm_line[AS] = prev_line[AS] + (line[AS]-prev_line[AS]) * ( numerator / ( prev_line[TL] - line[TL]))
+                nrm_line[HS] = prev_line[HS] + (line[HS]-prev_line[HS]) * ( numerator / ( prev_line[TL] - line[TL]))
+                nrm_line[TL] = 48.0 - nrm_line_te
+    
+                nrm_game_data.append(nrm_line)
+                last_assigned_time += time_step
+                prev_nrm_line = list(nrm_line)
+                loop_cnt += 1
+    
+            prev_line = line
+    
+            if(cur_time == 48) :
+                #pdb.set_trace()
+                nrm_game_data.append(list(line))
     
     return nrm_game_data
 
     
 def normalize_all_games(game_data) :
     keys = game_data.keys()
-    print "keys = " + str(keys)
+    #print "keys = " + str(keys)
     #mykey = "400829041\n"
     
     nrm_game_data = {}
@@ -248,6 +257,7 @@ def write_game_data(outfile, nrm_data) :
         for keys in nrm_data.keys() :
             for line in nrm_data[keys] :
                 spamwriter.writerow(line)
+    print "Data written to : " + outfile
 
 
 # Only run parser code if directly called
