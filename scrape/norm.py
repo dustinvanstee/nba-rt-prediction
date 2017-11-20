@@ -183,7 +183,9 @@ def normalize(cur_game) :
         # Make sure every final score makes the data set ...
         if(re.search('FINAL', cur_game[i][CT])) :
             print "Adding final score for " + str(cur_game[i])
-            nrm_game_data.append(list(line[0:7]))  
+            tmpline = list(line[0:7])
+            tmpline.append(0.0)
+            nrm_game_data.append(list(tmpline))
             #pdb.set_trace()      
 
         else :
