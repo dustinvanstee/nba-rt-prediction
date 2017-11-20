@@ -45,7 +45,7 @@ def parse(base_file, within_spark=0) :
             home_team = base_file_ary[3].split('/')[0]
 
             tmp = line.split(",")
-            lineary = list(date_str,tmp[0],away_team,tmp[1],home_team,tmp[2],tmp[3],tmp[4])
+            lineary = list([date_str,tmp[0],away_team,tmp[1],home_team,tmp[2],tmp[3],tmp[4]])
 
 
         gameid = ""
