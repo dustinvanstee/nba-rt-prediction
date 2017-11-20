@@ -234,10 +234,6 @@ def write_game_data(outfile, nrm_data) :
 
 
 
-game_data = parse(base_file)
-nrm_game_data = normalize_all_games(game_data)
-
-write_game_data(norm_file,nrm_game_data)
 
 
 
