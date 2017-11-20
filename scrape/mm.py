@@ -140,6 +140,8 @@ def get_scores(league,team_filter=None):
 
         return scores
 
+# Moving to norm.py, and upgrading capability there ...
+# its best not to process streaming data, but rather just capture and post process offline
 
 def convert_time(time_string, sport) :
     #(10:32 IN 3RD)
@@ -195,65 +197,69 @@ def get_and_record_scores(sport) :
         ftstamp = datetime.datetime.fromtimestamp(tstamp).strftime('%Y-%m-%d,%H:%M:%S')
 
         scores = get_scores(sport)
-        outfile = re.sub('REPLACE',sport,outfilebase)
+        # I have been having this crash sometimes when sport is not a dict
+        if(isinstance(scores,dict)) :
 
-        #output format = date,t1,score,t2,score,time,timeleft
-        f = open(outfile, 'a')
 
-        ## Create a simple while loop here ... if all games final stop ....
-        ## Only print if there is a change from previous
-
-        any_updates = 0  # global sleep monitor that will throttle my pinging of the server
-
-        for k,v in scores.iteritems():
-            write_data = 0
-            if(pscores.has_key(k)) :
-                if(scores[k] != pscores[k]) :
-                    print "Score change detected"
-                    print "Previous {0}".format(pscores[k])
-                    print "Current  {0}".format(scores[k])
+            outfile = re.sub('REPLACE',sport,outfilebase)
+    
+            #output format = date,t1,score,t2,score,time,timeleft
+            f = open(outfile, 'a')
+    
+            ## Create a simple while loop here ... if all games final stop ....
+            ## Only print if there is a change from previous
+    
+            any_updates = 0  # global sleep monitor that will throttle my pinging of the server
+    
+            for k,v in scores.iteritems():
+                write_data = 0
+                if(pscores.has_key(k)) :
+                    if(scores[k] != pscores[k]) :
+                        print "Score change detected"
+                        print "Previous {0}".format(pscores[k])
+                        print "Current  {0}".format(scores[k])
+                        write_data = 1
+                        any_updates = 1
+    
+                else :
                     write_data = 1
                     any_updates = 1
+                    print "Initial write  {0}".format(scores[k])
+    
+                        #print "key = {0}".format(k)
+                        #print "val = {0}".format(v)
+                if(write_data == 1) :
+                    f.write(ftstamp + ",")
+                    for item in v :
+                        #print item
+                        f.write(item + ",")
+                    # defer logic for mlb and just put it in the spark workbook for now
+                    if(sport != 'mlb') :
+                        f.write( convert_time(v[4],sport)+ "," )
+                    else :
+                        f.write('0'+ ",")
+                    f.write(k)
+                    f.write("\n")
+                    f.flush()
+            # save the structure for the next loop!
+            pscores = scores
 
+            # reset timer if updates occured ..
+            if(any_updates == 1) :
+                sleep_time = sample_rate
+            # slow timer if no updates occured ..
             else :
-                write_data = 1
-                any_updates = 1
-                print "Initial write  {0}".format(scores[k])
+                # limit throttle to max of 1820 seconds of sleep
+                if(sleep_time < 961) :
+                    sleep_time *= 2
 
-                    #print "key = {0}".format(k)
-                    #print "val = {0}".format(v)
-            if(write_data == 1) :
-                f.write(ftstamp + ",")
-                for item in v :
-                    #print item
-                    f.write(item + ",")
-                # defer logic for mlb and just put it in the spark workbook for now
-                if(sport != 'mlb') :
-                    f.write( convert_time(v[4],sport)+ "," )
-                else :
-                    f.write('0'+ ",")
-                f.write(k)
-                f.write("\n")
-                f.flush()
-        # save the structure for the next loop!
-        pscores = scores
+            print "Updates detected = {0}".format(any_updates)
+            print "Sleeping for {0}".format(sleep_time)
 
-        # reset timer if updates occured ..
-        if(any_updates == 1) :
-            sleep_time = sample_rate
-        # slow timer if no updates occured ..
-        else :
-            # limit throttle to max of 1820 seconds of sleep
-            if(sleep_time < 961) :
-                sleep_time *= 2
+            time.sleep(sleep_time)
+            #pdb.set_trace()
 
-        print "Updates detected = {0}".format(any_updates)
-        print "Sleeping for {0}".format(sleep_time)
-
-        time.sleep(sleep_time)
-        #pdb.set_trace()
-
-    f.close()
+            f.close()
 
 
 def main():
