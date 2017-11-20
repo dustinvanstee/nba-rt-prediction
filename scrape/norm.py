@@ -139,9 +139,11 @@ def convert_time(time_string, sport) :
     return str(time_left)
 
 
+# cur_game is an array of lists
+#  each row is a list of a single data point from a game
 
 
-def normalize(cur_game, mykey) :
+def normalize(cur_game) :
 
     time_step = 0.5
     start_time = 0.0
@@ -205,7 +207,7 @@ def normalize_all_games(game_data) :
     nrm_game_data = {}
     for mykey in keys :
         print "Normalizing game " + mykey
-        nrm_game_data[mykey] = normalize(game_data[mykey], mykey)
+        nrm_game_data[mykey] = normalize(game_data[mykey])
         #debug_game(game_data[mykey],nrm_game_data[mykey])
         #pdb.set_trace()
 
@@ -233,6 +235,11 @@ def write_game_data(outfile, nrm_data) :
                 spamwriter.writerow(line)
 
 
+# Only run parser code if directly called
+if __name__ == "__main__":
+    game_data = parse(base_file)
+    nrm_game_data = normalize_all_games(game_data)
+    write_game_data(norm_file,nrm_game_data)
 
 
 
