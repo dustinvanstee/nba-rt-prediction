@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.VectorAssembler","timestamp":1511211308769,"sparkVersion":"2.2.0","uid":"VectorAssembler_4df5b5de00b9958282fd","paramMap":{"outputCol":"features","inputCols":["home_score","away_score","score_diff_amh","home_team_spread","pct_complete"]}}
