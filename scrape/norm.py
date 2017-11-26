@@ -5,8 +5,8 @@ import csv
 import re
 
 base_dir = "/data/work/git-repos/nba-rt-prediction/scoredata/"
-base_file = base_dir + "scores_nba.2015.test.dat"
-norm_file = base_dir + "nrm_scores_nba.2015.test.dat"
+base_file = base_dir + "scores_nba.merge.dat"
+norm_file = base_dir + "nrm_scores_nba.merge.dat"
 
 #CONSTANTS for CSV file
 DT=0 # date
