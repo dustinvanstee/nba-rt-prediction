@@ -19,6 +19,7 @@ git clone https://github.com/dustinvanstee/nba-rt-prediction.git
 wget http://apache.claz.org/spark/spark-2.1.2/spark-2.1.2-bin-hadoop2.7.tgz 
 tar -zxvf spark-2.1.2-bin-hadoop2.7.tgz
 apt-get -y install openjdk-8-jdk
+pip install brunel
 
 export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-ppc64el
 export SPARK_HOME=/data/spark-2.1.2-bin-hadoop2.7
@@ -29,3 +30,5 @@ export SPARK_HOME=/data/spark-2.1.2-bin-hadoop2.7
 . /opt/DL/tensorflow/bin/tensorflow-activate
 PYSPARK_DRIVER_PYTHON=jupyter PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --allow-root --port=5050" $SPARK_HOME/bin/pyspark --master local[*]
 ```
+## Live Application Hosted Here
+https://nba-rt-demo.mybluemix.net/
