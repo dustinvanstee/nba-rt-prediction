@@ -1,17 +1,34 @@
 # nba-rt-prediction
-This repo contains everything you need to perform your datascientist workbench analysis, and it also contains the files you need for developing your web app on bluemix!a
+This repository holds code used to analyze NBA games and generate a model about how to predict game outcomes while games are in progress.  
 
-To get started with the complete 'howto', check out the pdf file attached here.  Added a local comment that is not committed.  Added another cmt
+If you would like to reproduce this work, you will need to setup an environment that supports
+- spark 2.1
+- Tensorflow 1.1 and Keras 
+- brunel visualization
 
-Jupyter Notebooks located here ...
-Data Prep
-https://dataplatform.ibm.com/analytics/notebooks/c1c6a418-daf7-40c4-b646-878fba28a076/view?access_token=001f14a5875daefa40c0e25d0fd156cbe8ba5f3a7156a0a27ba6ab7eb3a18b35
+You can use Nimbix to get an environment that leverage GPU's running on IBM Power machines running Ubuntu 16.04
+see this link to sign up for free 7 day trial 
+https://developer.ibm.com/linuxonpower/cloud-resources/
 
-Vis
-https://dataplatform.ibm.com/analytics/notebooks/302ca98d-ba0d-4d9c-aad7-59bf7e15f162/view?access_token=8e3d937fa33f9df6156736a271c7d5432e12f09ce380a5c1cdf198cbfa7ed9a8
+Once you deploy the environment, you will need to install spark.  Here are the quick instructions 
 
-Model / Eval / Deploy
-https://dataplatform.ibm.com/analytics/notebooks/9b786d11-5b27-41ec-b436-e77433e943a2/view?access_token=f9f84f48c94a7531b9b9cd6e047eceba2fca87c368291d8fba5626b315eb292b
+## Environment Setup 
+```
+cd /data
+git clone https://github.com/dustinvanstee/nba-rt-prediction.git
+wget http://apache.claz.org/spark/spark-2.1.2/spark-2.1.2-bin-hadoop2.7.tgz 
+tar -zxvf spark-2.1.2-bin-hadoop2.7.tgz
+apt-get -y install openjdk-8-jdk
+pip install brunel
 
-DNN
-https://dataplatform.ibm.com/analytics/notebooks/9b786d11-5b27-41ec-b436-e77433e943a2/view?access_token=f9f84f48c94a7531b9b9cd6e047eceba2fca87c368291d8fba5626b315eb292b
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-ppc64el
+export SPARK_HOME=/data/spark-2.1.2-bin-hadoop2.7
+```
+
+## Start Jupyter
+```
+. /opt/DL/tensorflow/bin/tensorflow-activate
+PYSPARK_DRIVER_PYTHON=jupyter PYSPARK_DRIVER_PYTHON_OPTS="notebook --ip=0.0.0.0 --allow-root --port=5050" $SPARK_HOME/bin/pyspark --master local[*]
+```
+## Live Application Hosted Here
+https://nba-rt-demo.mybluemix.net/
